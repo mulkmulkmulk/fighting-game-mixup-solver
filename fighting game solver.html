@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fighting Game Mixup Solver</title>
+<style>
+  :root {
+    --bg:#0b111c; --panel:#111827cc; --panel2:#0f172acc; --line:#334155;
+    --text:#e5e7eb; --muted:#94a3b8; --red:#fb5b70; --blue:#60a5fa; --green:#86efac;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:24px; font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;
+    color:var(--text); background:radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 38%, #050814 100%);
+  }
+  h1 { text-align:center; margin:0; font-size:32px; color:#b084ff; }
+  .subtitle { text-align:center; color:var(--muted); margin:8px 0 24px; }
+  .card {
+    background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line); border-radius:10px; padding:16px; margin:14px auto; max-width:1350px;
+    box-shadow:0 12px 40px #0008;
+  }
+  .topbar { display:grid; grid-template-columns:260px 1fr 1fr 150px; gap:16px; align-items:end; }
+  label { display:block; font-weight:700; margin-bottom:8px; }
+  input, select, textarea {
+    width:100%; background:#0b1220; border:1px solid #475569; border-radius:6px; color:var(--text);
+    padding:10px 12px; font-size:15px;
+  }
+  .modeBox {
+    min-height:42px; display:flex; align-items:center; gap:10px; padding:10px 12px;
+    border:1px solid #475569; border-radius:6px; background:#0b1220;
+  }
+  .modeBox input { width:auto; transform:scale(1.15); }
+  .modeBox label { margin:0; font-weight:800; cursor:pointer; }
+  .sizeControls {
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  .sizeLine {
+    display:grid;
+    grid-template-columns:80px 34px 34px 34px;
+    gap:6px;
+    align-items:center;
+  }
+  .sizeLine span {
+    color:var(--muted);
+    font-weight:700;
+  }
+  .sizeValue {
+    text-align:center;
+    font-weight:900;
+    color:var(--text);
+  }
+  .sizeBtn {
+    padding:7px 0;
+    font-size:15px;
+    border-radius:6px;
+  }
+  .sizeBtn:disabled {
+    opacity:0.35;
+    cursor:not-allowed;
+    filter:grayscale(0.5);
+  }
+  button {
+    background:linear-gradient(135deg,#4f46e5,#c026d3); color:white; border:0; border-radius:8px;
+    padding:14px 20px; font-weight:800; font-size:16px; cursor:pointer;
+  }
+  button:hover { filter:brightness(1.12); }
+  .matrixWrap { overflow:auto; padding:8px 0; }
+  table.matrix { border-collapse:collapse; margin:auto; min-width:760px; }
+  .matrix th, .matrix td { border:1px solid #334155; }
+  .matrix th { padding:8px; color:#60a5fa; background:#101827; }
+  .matrix .corner { background:transparent; border:0; min-width:120px; }
+  .nameCell { background:transparent; border:0 !important; width:140px; }
+  .nameCell input { font-weight:700; }
+  .payoffCell {
+    width:160px; height:82px; position:relative; background:linear-gradient(150deg,#111827,#0b1220);
+  }
+  .payoffCell:after {
+    content:""; position:absolute; left:0; right:0; top:50%; border-top:1px solid #334155; transform:skewY(-12deg);
+    opacity:.8; pointer-events:none;
+  }
+  .p1, .p2 {
+    position:absolute; width:70px; background:transparent; border:0; border-radius:0; padding:2px; font-size:18px; font-weight:700;
+  }
+  .p1 { top:8px; left:10px; color:var(--red); }
+  .p2 { right:10px; bottom:8px; text-align:right; color:var(--blue); }
+  .legend { text-align:center; margin-top:12px; color:var(--muted); }
+  .legend span { margin:0 12px; }
+  .sw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:6px; }
+  .red { background:var(--red); } .blue { background:var(--blue); }
+  .results { display:grid; grid-template-columns:420px 420px; justify-content:center; gap:20px; }
+  .result h2 { margin:4px 0 14px; font-size:19px; text-align:center; }
+  .rowh { color:var(--red); } .colh { color:var(--blue); } .sumh { color:var(--green); }
+  .mini { width:auto; margin:auto; border-collapse:collapse; }
+  .mini th, .mini td { border-bottom:1px solid #334155; padding:10px 16px; }
+  .mini td:nth-child(2),
+  .mini td:nth-child(3),
+  .mini th:nth-child(2),
+  .mini th:nth-child(3) {
+    text-align:right;
+  }
+  .valueBox {
+    margin-top:14px; padding:14px; text-align:center; border-radius:6px; border:1px solid #475569;
+    background:#0f172a; font-size:28px; font-weight:900;
+  }
+  .notice { color:#fbbf24; font-weight:700; }
+  .ok { color:var(--green); }
+  .small { color:var(--muted); font-size:14px; line-height:1.5; }
+  #summary {
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+  }
+  .quietMode {
+    margin-top:24px;
+    opacity:0.78;
+    font-size:14px;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+  .quietMode input {
+    width:auto;
+    transform:scale(1.05);
+  }
+  .quietMode label {
+    margin:0;
+    cursor:pointer;
+    font-weight:700;
+  }
+  .explainText {
+    max-width:420px;
+    margin:12px auto;
+    text-align:center;
+    line-height:1.5;
+  }
+  .advancedToggles {
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:22px;
+    flex-wrap:wrap;
+  }
+  .saveLoadPanel {
+    display:none;
+    max-width:520px;
+    margin:14px auto 0;
+  }
+  .equilibriumChoices {
+    margin:12px auto;
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .equilibriumChoice {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:8px 10px;
+    border:1px solid #334155;
+    border-radius:8px;
+    background:#0b1220;
+    font-size:13px;
+    color:var(--muted);
+    cursor:pointer;
+  }
+  .equilibriumChoice input {
+    width:auto;
+  }
+  .saveLoadControls {
+    display:flex;
+    justify-content:center;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:8px;
+  }
+  .saveLoadControls button {
+    padding:8px 12px;
+    font-size:13px;
+  }
+  #saveLoadText {
+    min-height:80px;
+    resize:vertical;
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:12px;
+    line-height:1.35;
+  }
+  #bimatrixCard{
+    text-align:center;
+  }
+  #summary{
+    max-width:700px;
+    margin:auto;
+  }
+  @media (max-width:900px) { .topbar, .results { grid-template-columns:1fr; } body { padding:12px; } }
+</style>
+</head>
+<body>
+  <h1>Fighting Game Mixup Solver</h1>
+  <div class="subtitle">Compute optimal frequencies and expected damage for fighting game mixups using Nash equilibrium.</div>
+
+  <div class="card topbar">
+    <div>
+      <label>Matrix size</label>
+      <div class="sizeControls">
+        <div class="sizeLine">
+          <span>Rows</span>
+          <button class="sizeBtn" id="rowMinus" type="button">−</button>
+          <div class="sizeValue" id="rowCount">3</div>
+          <button class="sizeBtn" id="rowPlus" type="button">+</button>
+        </div>
+        <div class="sizeLine">
+          <span>Columns</span>
+          <button class="sizeBtn" id="colMinus" type="button">−</button>
+          <div class="sizeValue" id="colCount">3</div>
+          <button class="sizeBtn" id="colPlus" type="button">+</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <label>Row player moves</label>
+      <input id="rowNames" />
+    </div>
+    <div>
+      <label>Column player moves</label>
+      <input id="colNames" />
+    </div>
+    <button id="solveBtn" type="button">Solve</button>
+  </div>
+
+  <div class="card">
+    <div class="matrixWrap" id="matrixWrap"></div>
+    <div class="legend">
+      <span><i class="sw red"></i>Row payoff / damage to you</span>
+      <span><i class="sw blue"></i>Column payoff / opponent payoff</span>
+    </div>
+  </div>
+
+  <div class="card results">
+    <div class="result">
+      <h2 class="rowh">Optimal Strategy: Row Player</h2>
+      <div id="rowResult"></div>
+    </div>
+    <div class="result">
+      <h2 class="colh">Optimal Strategy: Column Player</h2>
+      <div id="colResult"></div>
+    </div>
+  </div>
+
+  <div class="card" id="bimatrixCard">
+    <div class="advancedToggles">
+      <div class="quietMode">
+        <input id="bimatrixMode" type="checkbox">
+        <label for="bimatrixMode">Bimatrix Nash</label>
+      </div>
+
+      <div class="quietMode">
+        <input id="saveLoadMode" type="checkbox">
+        <label for="saveLoadMode">Save / Load</label>
+      </div>
+    </div>
+
+    <div class="saveLoadPanel" id="saveLoadPanel">
+      <div class="saveLoadControls">
+        <button id="exportBtn" type="button">Export</button>
+        <button id="importBtn" type="button">Import</button>
+        <button id="clearSaveBtn" type="button">Clear</button>
+      </div>
+      <textarea id="saveLoadText" placeholder="Export creates pasteable text here. Paste saved text here and press Import."></textarea>
+      <div class="small" style="text-align:center;margin-top:8px;">
+        Plain text JSON for Discord, notes, or matchup documents.
+      </div>
+    </div>
+
+    <div id="summary"></div>
+  </div>
+
+  <div class="card small">
+    <h3 style="margin-top:0;color:#b084ff;">How to use</h3>
+
+    1. Pick the matrix size, up to 10×10.<br>
+    2. Edit row and column move names directly in the matrix headers or in the text boxes above.<br>
+    3. Enter payoffs in each cell. Red values are your payoffs, blue values are the opponent's payoffs.<br>
+    4. Press <b>Solve</b> to compute the optimal mixed strategy frequencies and expected values.<br>
+
+    <hr style="border-color:#334155;margin:20px 0;">
+
+    <div style="text-align:center">
+      <b>Fighting Game Mixup Solver</b><br>
+
+      <span style="color:#94a3b8;">
+        Find optimal frequencies and expected damage for fighting game mixups using Nash equilibrium.
+      </span>
+
+      <br><br>
+
+      <span style="color:#94a3b8;">Inspired by </span>
+      <a href="https://www.youtube.com/watch?v=rSSfrONyS50"
+         target="_blank"
+         style="color:#60a5fa;text-decoration:none;">
+        Magician's YouTube video
+      </a>
+
+      <br><br>
+
+      <a href="https://ko-fi.com/mulkmulkmulk"
+         target="_blank"
+         style="
+           display:inline-block;
+           padding:12px 28px;
+           border-radius:8px;
+           background:linear-gradient(135deg,#4f46e5,#c026d3);
+           color:white;
+           text-decoration:none;
+           font-weight:bold;
+           box-shadow:0 0 12px rgba(168,85,247,0.35);
+         ">
+        ☕ Buy me a coffee
+      </a>
+
+      <br><br>
+
+      <span style="color:#94a3b8;font-size:14px;">
+        Donations help fund future features such as save/load support,
+        character presets, matchup libraries and non-zero-sum games.
+      </span>
+    </div>
+  </div>
+
+<script>
+const EPS = 1e-9;
+let useBimatrixMode = false;
+let selectedEquilibriumIndex = 0;
+let currentRows = 3;
+let currentCols = 3;
+
+const presets = {
+  2: {
+    rows: ["FF3", "Hellsweep"],
+    cols: ["B", "DB"],
+    A: [[0,75],[31,-75]]
+  },
+  3: {
+    rows: ["FF3", "Hellsweep", "EWGF"],
+    cols: ["B", "DB", "SSL"],
+    A: [[0,75,-75],[31,-75,31],[5,-70,80]]
+  },
+  4: {
+    rows: ["A", "B", "C", "D"],
+    cols: ["W", "X", "Y", "Z"],
+    A: [
+      [40, -20, 10, 0],
+      [15, 30, -30, 5],
+      [-10, 20, 35, -25],
+      [5, -15, 25, 45]
+    ],
+    B: [
+      [10, 60, 0, 20],
+      [30, 5, 50, 10],
+      [40, 15, 5, 55],
+      [0, 35, 20, 5]
+    ]
+  }
+};
+
+function abcNames(n, prefix) {
+  return Array.from({length:n}, (_,i) => prefix + String.fromCharCode(65+i));
+}
+
+function presetFor(rows, cols) {
+  if (rows === cols && presets[rows]) return presets[rows];
+  return {
+    rows: abcNames(rows, ""),
+    cols: abcNames(cols, ""),
+    A: Array.from({length:rows}, () => Array(cols).fill(0)),
+    B: null
+  };
+}
+
+function init() {
+  document.getElementById("rowMinus").addEventListener("click", () => changeRows(-1));
+  document.getElementById("rowPlus").addEventListener("click", () => changeRows(1));
+  document.getElementById("colMinus").addEventListener("click", () => changeCols(-1));
+  document.getElementById("colPlus").addEventListener("click", () => changeCols(1));
+
+  document.getElementById("rowNames").addEventListener("change", rebuildFromNameBoxes);
+  document.getElementById("colNames").addEventListener("change", rebuildFromNameBoxes);
+  document.getElementById("solveBtn").addEventListener("click", solve);
+  document.getElementById("exportBtn").addEventListener("click", exportSituation);
+  document.getElementById("importBtn").addEventListener("click", importSituation);
+  document.getElementById("clearSaveBtn").addEventListener("click", () => {
+    document.getElementById("saveLoadText").value = "";
+  });
+  document.getElementById("saveLoadMode").addEventListener("change", (e) => {
+    document.getElementById("saveLoadPanel").style.display = e.target.checked ? "block" : "none";
+  });
+
+  loadPreset(3, 3);
+}
+
+function loadPreset(rows, cols=rows) {
+  currentRows = rows;
+  currentCols = cols;
+  updateSizeDisplay();
+
+  const p = presetFor(rows, cols);
+  document.getElementById("rowNames").value = p.rows.join(",");
+  document.getElementById("colNames").value = p.cols.join(",");
+  buildMatrix(p.rows, p.cols, p.A, p.B || null);
+  solve();
+}
+
+function updateSizeDisplay() {
+  document.getElementById("rowCount").textContent = currentRows;
+  document.getElementById("colCount").textContent = currentCols;
+  document.getElementById("rowMinus").disabled = currentRows <= 2;
+  document.getElementById("rowPlus").disabled = currentRows >= 10;
+  document.getElementById("colMinus").disabled = currentCols <= 2;
+  document.getElementById("colPlus").disabled = currentCols >= 10;
+}
+
+function namesFromBox(id, count, fallbackPrefix) {
+  let parts = document.getElementById(id).value.split(",").map(s=>s.trim()).filter(Boolean);
+  const fallback = abcNames(count, fallbackPrefix);
+  while (parts.length < count) parts.push(fallback[parts.length]);
+  return parts.slice(0,count);
+}
+
+function resizedMatrix(matrix, rows, cols, fillWithNegOf=null) {
+  return Array.from({length:rows}, (_,i) =>
+    Array.from({length:cols}, (_,j) => {
+      if (matrix && matrix[i] && matrix[i][j] !== undefined) {
+        const v = Number(matrix[i][j]);
+        return Number.isFinite(v) ? v : 0;
+      }
+      if (fillWithNegOf && fillWithNegOf[i] && fillWithNegOf[i][j] !== undefined) {
+        const v = Number(fillWithNegOf[i][j]);
+        return Number.isFinite(v) ? -v : 0;
+      }
+      return 0;
+    })
+  );
+}
+
+function changeRows(delta) {
+  const newRows = Math.max(2, Math.min(10, currentRows + delta));
+  if (newRows === currentRows) return;
+  selectedEquilibriumIndex = 0;
+
+  const old = readMatrices();
+  currentRows = newRows;
+  updateSizeDisplay();
+
+  const rowNames = namesFromBox("rowNames", currentRows, "");
+  const colNames = namesFromBox("colNames", currentCols, "");
+  const A = resizedMatrix(old.A, currentRows, currentCols);
+  const B = resizedMatrix(old.B, currentRows, currentCols, A);
+  buildMatrix(rowNames, colNames, A, B);
+  solve();
+}
+
+function changeCols(delta) {
+  const newCols = Math.max(2, Math.min(10, currentCols + delta));
+  if (newCols === currentCols) return;
+  selectedEquilibriumIndex = 0;
+
+  const old = readMatrices();
+  currentCols = newCols;
+  updateSizeDisplay();
+
+  const rowNames = namesFromBox("rowNames", currentRows, "");
+  const colNames = namesFromBox("colNames", currentCols, "");
+  const A = resizedMatrix(old.A, currentRows, currentCols);
+  const B = resizedMatrix(old.B, currentRows, currentCols, A);
+  buildMatrix(rowNames, colNames, A, B);
+  solve();
+}
+
+function rebuildFromNameBoxes() {
+  const old = readMatrices();
+  buildMatrix(namesFromBox("rowNames", currentRows, ""), namesFromBox("colNames", currentCols, ""), old.A, old.B);
+}
+
+function buildMatrix(rowNames, colNames, A, B=null) {
+  const rows = currentRows;
+  const cols = currentCols;
+  let html = '<table class="matrix"><tr><th class="corner"></th>';
+  for (let j=0;j<cols;j++) html += `<th><input data-colname="${j}" value="${escapeHtml(colNames[j])}"></th>`;
+  html += "</tr>";
+
+  for (let i=0;i<rows;i++) {
+    html += `<tr><td class="nameCell"><input data-rowname="${i}" value="${escapeHtml(rowNames[i])}"></td>`;
+    for (let j=0;j<cols;j++) {
+      const a = (A[i] && Number.isFinite(+A[i][j])) ? +A[i][j] : 0;
+      const b = (B && B[i] && Number.isFinite(+B[i][j])) ? +B[i][j] : -a;
+      html += `<td class="payoffCell">
+        <input class="p1" data-a="${i},${j}" value="${a}">
+        <input class="p2" data-b="${i},${j}" value="${b}">
+      </td>`;
+    }
+    html += "</tr>";
+  }
+  html += "</table>";
+  document.getElementById("matrixWrap").innerHTML = html;
+
+  document.querySelectorAll("[data-rowname], [data-colname]").forEach(inp => {
+    inp.addEventListener("change", syncNameBoxes);
+    inp.addEventListener("input", syncNameBoxes);
+  });
+
+  document.querySelectorAll("[data-a]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const bimatrixToggle = document.getElementById("bimatrixMode");
+      if (bimatrixToggle && bimatrixToggle.checked) return;
+      const [i,j] = inp.dataset.a.split(",").map(Number);
+      const b = document.querySelector(`[data-b="${i},${j}"]`);
+      const val = parseFloat(inp.value);
+      if (b && Number.isFinite(val)) b.value = -val;
+    });
+  });
+
+  syncNameBoxes();
+}
+
+function syncNameBoxes() {
+  const row = [...document.querySelectorAll("[data-rowname]")].map(x=>x.value.trim()).join(",");
+  const col = [...document.querySelectorAll("[data-colname]")].map(x=>x.value.trim()).join(",");
+  document.getElementById("rowNames").value = row;
+  document.getElementById("colNames").value = col;
+}
+
+function readMatrices() {
+  const rows = currentRows;
+  const cols = currentCols;
+  const A = Array.from({length:rows},()=>Array(cols).fill(0));
+  const B = Array.from({length:rows},()=>Array(cols).fill(0));
+  document.querySelectorAll("[data-a]").forEach(inp => {
+    const [i,j] = inp.dataset.a.split(",").map(Number);
+    if (i<rows && j<cols) {
+      const v = parseFloat(inp.value);
+      A[i][j] = Number.isFinite(v) ? v : 0;
+    }
+  });
+  document.querySelectorAll("[data-b]").forEach(inp => {
+    const [i,j] = inp.dataset.b.split(",").map(Number);
+    if (i<rows && j<cols) {
+      const v = parseFloat(inp.value);
+      B[i][j] = Number.isFinite(v) ? v : 0;
+    }
+  });
+  return {A,B};
+}
+
+function combinations(n,k) {
+  const res = [], c = [];
+  function rec(start) {
+    if (c.length === k) { res.push(c.slice()); return; }
+    for (let i=start; i<=n-(k-c.length); i++) { c.push(i); rec(i+1); c.pop(); }
+  }
+  rec(0);
+  return res;
+}
+
+function nonemptySubsets(n) {
+  const out = [];
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const s = [];
+    for (let i=0; i<n; i++) if (mask & (1 << i)) s.push(i);
+    out.push(s);
+  }
+  return out;
+}
+
+function gaussianSolve(M, b) {
+  const n = M.length;
+  const A = M.map((row,i)=>row.slice().concat([b[i]]));
+  for (let col=0; col<n; col++) {
+    let pivot = col;
+    for (let r=col+1; r<n; r++) if (Math.abs(A[r][col]) > Math.abs(A[pivot][col])) pivot = r;
+    if (Math.abs(A[pivot][col]) < 1e-10) return null;
+    [A[col], A[pivot]] = [A[pivot], A[col]];
+    const div = A[col][col];
+    for (let c=col; c<=n; c++) A[col][c] /= div;
+    for (let r=0; r<n; r++) if (r !== col) {
+      const f = A[r][col];
+      for (let c=col; c<=n; c++) A[r][c] -= f * A[col][c];
+    }
+  }
+  return A.map(row=>row[n]);
+}
+
+function normalize(arr) {
+  const clean = arr.map(v => Math.abs(v) < 1e-7 ? 0 : Math.max(0, v));
+  const s = clean.reduce((a,b)=>a+b,0);
+  return s ? clean.map(v=>v/s) : clean;
+}
+
+function expected(M, x, y) {
+  let s=0;
+  for (let i=0;i<M.length;i++) for (let j=0;j<M[0].length;j++) s += x[i]*M[i][j]*y[j];
+  return s;
+}
+
+function solveRowLP(A) {
+  const m = A.length, n = A[0].length;
+  const cons = [];
+  for (let j=0;j<n;j++) {
+    const coeff = Array(m+1).fill(0);
+    for (let i=0;i<m;i++) coeff[i] = -A[i][j];
+    coeff[m] = 1;
+    cons.push({coeff, rhs:0});
+  }
+  for (let i=0;i<m;i++) {
+    const coeff = Array(m+1).fill(0);
+    coeff[i] = -1;
+    cons.push({coeff, rhs:0});
+  }
+  let best = null;
+  for (const comb of combinations(cons.length, m)) {
+    const M = [Array(m+1).fill(0)];
+    for (let i=0;i<m;i++) M[0][i] = 1;
+    const b = [1];
+    for (const idx of comb) { M.push(cons[idx].coeff.slice()); b.push(cons[idx].rhs); }
+    const sol = gaussianSolve(M,b);
+    if (!sol) continue;
+    let feasible = true;
+    for (const con of cons) {
+      const lhs = con.coeff.reduce((s,c,i)=>s+c*sol[i],0);
+      if (lhs - con.rhs > 1e-7) { feasible=false; break; }
+    }
+    if (!feasible) continue;
+    const v = sol[m];
+    if (!best || v > best.value + 1e-7) best = {strategy: sol.slice(0,m), value:v};
+  }
+  return best;
+}
+
+function solveColLP(A) {
+  const m = A.length, n = A[0].length;
+  const cons = [];
+  for (let i=0;i<m;i++) {
+    const coeff = Array(n+1).fill(0);
+    for (let j=0;j<n;j++) coeff[j] = A[i][j];
+    coeff[n] = -1;
+    cons.push({coeff, rhs:0});
+  }
+  for (let j=0;j<n;j++) {
+    const coeff = Array(n+1).fill(0);
+    coeff[j] = -1;
+    cons.push({coeff, rhs:0});
+  }
+  let best = null;
+  for (const comb of combinations(cons.length, n)) {
+    const M = [Array(n+1).fill(0)];
+    for (let j=0;j<n;j++) M[0][j] = 1;
+    const b = [1];
+    for (const idx of comb) { M.push(cons[idx].coeff.slice()); b.push(cons[idx].rhs); }
+    const sol = gaussianSolve(M,b);
+    if (!sol) continue;
+    let feasible = true;
+    for (const con of cons) {
+      const lhs = con.coeff.reduce((s,c,i)=>s+c*sol[i],0);
+      if (lhs - con.rhs > 1e-7) { feasible=false; break; }
+    }
+    if (!feasible) continue;
+    const v = sol[n];
+    if (!best || v < best.value - 1e-7) best = {strategy: sol.slice(0,n), value:v};
+  }
+  return best;
+}
+
+function dotPayoffRow(A, row, y) {
+  let s = 0;
+  for (let j=0; j<y.length; j++) s += A[row][j] * y[j];
+  return s;
+}
+
+function dotPayoffCol(B, x, col) {
+  let s = 0;
+  for (let i=0; i<x.length; i++) s += x[i] * B[i][col];
+  return s;
+}
+
+function supportStrategy(fullSize, support, probs) {
+  const out = Array(fullSize).fill(0);
+  support.forEach((idx,k) => out[idx] = Math.abs(probs[k]) < 1e-8 ? 0 : probs[k]);
+  return normalize(out);
+}
+
+function findBimatrixEquilibria(A, B) {
+  const m = A.length, n = A[0].length;
+  const rowSupports = nonemptySubsets(m);
+  const colSupports = nonemptySubsets(n);
+  const equilibria = [];
+
+  for (const I of rowSupports) {
+    for (const J of colSupports) {
+      if (I.length !== J.length) continue;
+      const k = I.length;
+
+      const My = [];
+      const by = [];
+      for (let r=1; r<k; r++) {
+        My.push(J.map(j => A[I[r]][j] - A[I[0]][j]));
+        by.push(0);
+      }
+      My.push(Array(k).fill(1));
+      by.push(1);
+      const ySub = gaussianSolve(My, by);
+      if (!ySub || ySub.some(v => v < -1e-7)) continue;
+
+      const Mx = [];
+      const bx = [];
+      for (let c=1; c<k; c++) {
+        Mx.push(I.map(i => B[i][J[c]] - B[i][J[0]]));
+        bx.push(0);
+      }
+      Mx.push(Array(k).fill(1));
+      bx.push(1);
+      const xSub = gaussianSolve(Mx, bx);
+      if (!xSub || xSub.some(v => v < -1e-7)) continue;
+
+      const x = supportStrategy(m, I, xSub);
+      const y = supportStrategy(n, J, ySub);
+
+      const rowPayoffs = Array.from({length:m}, (_,i) => dotPayoffRow(A, i, y));
+      const colPayoffs = Array.from({length:n}, (_,j) => dotPayoffCol(B, x, j));
+      const rowBest = Math.max(...rowPayoffs);
+      const colBest = Math.max(...colPayoffs);
+
+      const rowSupportOk = I.every(i => Math.abs(rowPayoffs[i] - rowBest) < 1e-5);
+      const colSupportOk = J.every(j => Math.abs(colPayoffs[j] - colBest) < 1e-5);
+      const rowNoOutsideBetter = rowPayoffs.every(v => v <= rowBest + 1e-5);
+      const colNoOutsideBetter = colPayoffs.every(v => v <= colBest + 1e-5);
+
+      if (rowSupportOk && colSupportOk && rowNoOutsideBetter && colNoOutsideBetter) {
+        const rowEV = expected(A, x, y);
+        const colEV = expected(B, x, y);
+        const duplicate = equilibria.some(eq =>
+          eq.x.every((v,i)=>Math.abs(v-x[i])<1e-5) &&
+          eq.y.every((v,j)=>Math.abs(v-y[j])<1e-5)
+        );
+        if (!duplicate) equilibria.push({x, y, rowEV, colEV, I, J});
+      }
+    }
+  }
+
+  equilibria.sort((a,b) => b.rowEV - a.rowEV);
+  return equilibria;
+}
+
+
+function exportSituation() {
+  syncNameBoxes();
+  const {A, B} = readMatrices();
+  const rowNames = [...document.querySelectorAll("[data-rowname]")].map(x => x.value || "");
+  const colNames = [...document.querySelectorAll("[data-colname]")].map(x => x.value || "");
+
+  const data = {
+    app: "Fighting Game Mixup Solver",
+    version: 2,
+    rows: currentRows,
+    columns: currentCols,
+    size: currentRows === currentCols ? currentRows : undefined,
+    rowMoves: rowNames,
+    columnMoves: colNames,
+    rowPayoffs: A,
+    columnPayoffs: B,
+    bimatrixNash: useBimatrixMode
+  };
+
+  document.getElementById("saveLoadText").value = JSON.stringify(data, null, 2);
+}
+
+function importSituation() {
+  const box = document.getElementById("saveLoadText");
+  let data;
+
+  try {
+    data = JSON.parse(box.value);
+  } catch (err) {
+    alert("Import failed: the pasted text is not valid JSON.");
+    return;
+  }
+
+  const importedRows = Number(data.rows || data.size);
+  const importedCols = Number(data.columns || data.size);
+
+  if (!Number.isInteger(importedRows) || !Number.isInteger(importedCols) ||
+      importedRows < 2 || importedRows > 10 || importedCols < 2 || importedCols > 10) {
+    alert("Import failed: rows and columns must be integers from 2 to 10.");
+    return;
+  }
+
+  if (!Array.isArray(data.rowPayoffs) || !Array.isArray(data.columnPayoffs)) {
+    alert("Import failed: missing payoff matrices.");
+    return;
+  }
+
+  const cleanMatrix = (matrix) => {
+    return Array.from({length:importedRows}, (_,i) =>
+      Array.from({length:importedCols}, (_,j) => {
+        const v = matrix[i] && matrix[i][j] !== undefined ? Number(matrix[i][j]) : 0;
+        return Number.isFinite(v) ? v : 0;
+      })
+    );
+  };
+
+  const rowLabels = Array.isArray(data.rowMoves) ? data.rowMoves.map(String).slice(0,importedRows) : abcNames(importedRows, "");
+  const colLabels = Array.isArray(data.columnMoves) ? data.columnMoves.map(String).slice(0,importedCols) : abcNames(importedCols, "");
+  while (rowLabels.length < importedRows) rowLabels.push(abcNames(importedRows, "")[rowLabels.length]);
+  while (colLabels.length < importedCols) colLabels.push(abcNames(importedCols, "")[colLabels.length]);
+
+  currentRows = importedRows;
+  currentCols = importedCols;
+  updateSizeDisplay();
+
+  document.getElementById("rowNames").value = rowLabels.join(",");
+  document.getElementById("colNames").value = colLabels.join(",");
+  useBimatrixMode = !!data.bimatrixNash;
+  selectedEquilibriumIndex = 0;
+
+  buildMatrix(rowLabels, colLabels, cleanMatrix(data.rowPayoffs), cleanMatrix(data.columnPayoffs));
+  solve();
+}
+
+function solve() {
+  try {
+    syncNameBoxes();
+    const {A,B} = readMatrices();
+    const rowNames = [...document.querySelectorAll("[data-rowname]")].map(x=>x.value || "Row");
+    const colNames = [...document.querySelectorAll("[data-colname]")].map(x=>x.value || "Col");
+    const bimatrix = useBimatrixMode;
+
+    let x, y, val, oppVal, modeText, extraText = "";
+
+    if (bimatrix) {
+      const equilibria = findBimatrixEquilibria(A, B);
+
+      if (!equilibria.length) {
+        document.getElementById("rowResult").innerHTML = "";
+        document.getElementById("colResult").innerHTML = "";
+        document.getElementById("summary").innerHTML =
+          '<p class="notice">No isolated bimatrix Nash equilibrium found. This can happen with degenerate games or larger supports. Try zero-sum mode, or adjust payoffs slightly.</p>';
+        return;
+      }
+
+      if (selectedEquilibriumIndex >= equilibria.length) selectedEquilibriumIndex = 0;
+      const eq = equilibria[selectedEquilibriumIndex];
+      x = eq.x;
+      y = eq.y;
+      val = eq.rowEV;
+      oppVal = eq.colEV;
+
+      const eqChoices = equilibria.length > 1
+        ? `<div class="equilibriumChoices">
+            ${equilibria.map((e, idx) => `
+              <label class="equilibriumChoice">
+                <input type="radio" name="eqChoice" value="${idx}" ${idx === selectedEquilibriumIndex ? "checked" : ""}>
+                #${idx + 1} EV=${fmtEV(e.rowEV)}
+              </label>
+            `).join("")}
+          </div>`
+        : "";
+
+      modeText = "Bimatrix Nash mode";
+      extraText =
+        `<p class="small explainText">
+        In zero-sum mode, the blue values do not affect the optimal mix. The solver finds your safest strategy against an opponent who tries to minimize your expected damage.
+        </p>
+        <p class="small explainText">
+        In Bimatrix Nash mode, both red and blue values matter. The opponent chooses counters based on their own payoff, which can change the optimal mix.
+        </p>
+        ${equilibria.length > 1
+          ? `<p class="small explainText">Multiple Nash equilibria found. Choose which stable outcome to display:</p>${eqChoices}`
+          : `<p class="small explainText">Bimatrix Nash equilibrium found.</p>`}`;
+    } else {
+      const row = solveRowLP(A);
+      const col = solveColLP(A);
+
+      if (!row || !col) {
+        document.getElementById("summary").innerHTML = '<p class="notice">Could not solve this matrix. Check that all payoffs are numbers.</p>';
+        return;
+      }
+
+      x = normalize(row.strategy);
+      y = normalize(col.strategy);
+      val = expected(A,x,y);
+      oppVal = expected(B,x,y);
+
+      modeText = "Zero-sum minimax mode";
+      extraText =
+        `<p class="small explainText"><b>What happened:</b> Zero-sum mode uses only the red payoff matrix to find your guaranteed expected damage. 
+        The opponent is treated as trying to minimize your red payoff. Blue values are only used for the displayed opponent payoff.</p>`;
+    }
+
+    document.getElementById("rowResult").innerHTML = stratTable(rowNames,x) +
+      `<div class="valueBox" style="color:var(--red)">Expected damage<br>${fmtEV(val)}</div>`;
+    document.getElementById("colResult").innerHTML = stratTable(colNames,y) +
+      `<div class="valueBox" style="color:var(--blue)">Opponent payoff<br>${fmtEV(oppVal)}</div>`;
+
+    document.getElementById("summary").innerHTML =
+      `
+${bimatrix ? extraText : ""}`;
+
+const bm=document.getElementById("bimatrixMode");
+    bm.checked=bimatrix;
+    bm.onchange=(e)=>{useBimatrixMode=e.target.checked; selectedEquilibriumIndex = 0; solve();};
+
+    document.querySelectorAll('input[name="eqChoice"]').forEach(radio => {
+      radio.onchange = (e) => {
+        selectedEquilibriumIndex = Number(e.target.value);
+        solve();
+      };
+    });
+  } catch (err) {
+    document.getElementById("summary").innerHTML = `<p class="notice">Error: ${escapeHtml(err.message)}</p>`;
+    console.error(err);
+  }
+}
+
+function stratTable(names, probs) {
+  let html = '<table class="mini"><tr><th>Move</th><th>Frequency</th><th>Percent</th></tr>';
+  for (let i=0;i<names.length;i++) {
+    html += `<tr><td>${escapeHtml(names[i])}</td><td>${fmtFreq(probs[i])}</td><td>${(100*probs[i]).toFixed(2)}%</td></tr>`;
+  }
+  return html + "</table>";
+}
+
+function mixText(names, probs) {
+  return names.map((name,i)=>`${escapeHtml(name)} ${(100*probs[i]).toFixed(2)}%`).join(", ");
+}
+
+function fmtFreq(x) { return (Math.abs(x)<1e-9 ? 0 : x).toFixed(2); }
+function fmtInt(x) { return Math.round(Math.abs(x)<1e-9 ? 0 : x).toString(); }
+function fmtEV(x) { return (Math.abs(x)<1e-9 ? 0 : x).toFixed(1); }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+
+init();
+</script>
+</body>
+</html>
