@@ -75,6 +75,100 @@
   .matrix .corner { background:transparent; border:0; min-width:120px; }
   .nameCell { background:transparent; border:0 !important; width:140px; }
   .nameCell input { font-weight:700; }
+  .moveReadBox {
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    align-items:center;
+  }
+  .moveReadBox > input {
+    width:100%;
+  }
+  .readControls {
+    display:none;
+    align-items:center;
+    justify-content:center;
+    align-self:center;
+    gap:4px;
+    white-space:nowrap;
+  }
+  body.bayesActive .readControls {
+    display:flex;
+  }
+  .readBtn {
+    width:24px;
+    height:24px;
+    padding:0;
+    border-radius:5px;
+    font-size:14px;
+    line-height:24px;
+  }
+  .readInput {
+    width:42px;
+    height:24px;
+    padding:2px 4px;
+    border-radius:5px;
+    font-size:12px;
+    font-weight:900;
+    text-align:center;
+    color:var(--text);
+  }
+  .readInput::-webkit-outer-spin-button,
+  .readInput::-webkit-inner-spin-button {
+    -webkit-appearance:none;
+    margin:0;
+  }
+  .readInput {
+    -moz-appearance:textfield;
+  }
+  .bayesDetails {
+    display:none;
+    max-width:680px;
+    margin:14px auto 0;
+    padding:12px 14px;
+    border:1px solid #334155;
+    border-radius:8px;
+    background:#0b1220;
+  }
+  .bayesDetails p { margin:8px 0; }
+  .bayesNote {
+    margin-top:12px;
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+  }
+  .adaptationOptions {
+    margin:12px auto 4px;
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .adaptationOption {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:7px 9px;
+    border:1px solid #334155;
+    border-radius:8px;
+    background:#0f172a;
+    color:var(--muted);
+    font-size:13px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  .adaptationOption input {
+    width:auto;
+    margin:0;
+    transform:scale(1.05);
+  }
+  .readSummary {
+    margin:12px auto 0;
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+    line-height:1.5;
+  }
   .payoffCell {
     width:160px; height:82px; position:relative; background:linear-gradient(150deg,#111827,#0b1220);
   }
@@ -292,9 +386,30 @@
       </div>
 
       <div class="quietMode">
+        <input id="bayesianMode" type="checkbox">
+        <label for="bayesianMode">Bayesian read / exploit mode</label>
+      </div>
+
+      <div class="quietMode">
         <input id="saveLoadMode" type="checkbox">
         <label for="saveLoadMode">Save / Load</label>
       </div>
+    </div>
+
+    <div class="bayesDetails" id="bayesDetails">
+      <p><b>Bayesian read / exploit mode</b></p>
+      <p>Nash assumes the opponent is perfectly balanced. This mode instead estimates what they are likely to do next based on both equilibrium frequencies and observed habits.</p>
+      <p>When you record your own moves, the solver also predicts how the opponent may adapt. Better counters receive more adaptation weight, but near-optimal counters may also become more likely.</p>
+      <p><b>Adaptation sharpness</b></p>
+      <div class="adaptationOptions">
+        <label class="adaptationOption"><input type="radio" name="adaptationSharpness" value="conservative"> Conservative</label>
+        <label class="adaptationOption"><input type="radio" name="adaptationSharpness" value="normal" checked> Normal</label>
+        <label class="adaptationOption"><input type="radio" name="adaptationSharpness" value="strong"> Strong</label>
+        <label class="adaptationOption"><input type="radio" name="adaptationSharpness" value="perfect"> Perfect</label>
+      </div>
+      <p class="small">Conservative — opponent changes habits slowly<br>Normal — opponent notices patterns and adjusts<br>Strong — opponent actively looks for counters<br>Perfect — opponent almost always chooses the best counter</p>
+      <p>Use the <b>+</b> and <b>−</b> buttons beside moves to record actions one at a time, or type the count directly in the small box.</p>
+      <p class="bayesNote">Prior strength is fixed at 10 imaginary observations.</p>
     </div>
 
     <div class="saveLoadPanel" id="saveLoadPanel">
@@ -367,9 +482,24 @@
 <script>
 const EPS = 1e-9;
 let useBimatrixMode = false;
+let useBayesianMode = false;
 let selectedEquilibriumIndex = 0;
 let currentRows = 3;
 let currentCols = 3;
+let rowReadCounts = Array(currentRows).fill(0);
+let colReadCounts = Array(currentCols).fill(0);
+let adaptationSharpness = "normal";
+const BAYES_PRIOR_STRENGTH = 10;
+const ADAPTATION_TEMPERATURES = {
+  conservative: 100,
+  normal: 20,
+  strong: 5,
+  perfect: 0.1
+};
+
+function currentAdaptationTemperature() {
+  return ADAPTATION_TEMPERATURES[adaptationSharpness] || ADAPTATION_TEMPERATURES.normal;
+}
 
 const presets = {
   2: {
@@ -431,6 +561,19 @@ function init() {
   document.getElementById("saveLoadMode").addEventListener("change", (e) => {
     document.getElementById("saveLoadPanel").style.display = e.target.checked ? "block" : "none";
   });
+  document.getElementById("bayesianMode").addEventListener("change", (e) => {
+    useBayesianMode = e.target.checked;
+    document.body.classList.toggle("bayesActive", useBayesianMode);
+    document.getElementById("bayesDetails").style.display = e.target.checked ? "block" : "none";
+    solve();
+  });
+
+  document.querySelectorAll('input[name="adaptationSharpness"]').forEach(radio => {
+    radio.addEventListener("change", (e) => {
+      adaptationSharpness = e.target.value;
+      solve();
+    });
+  });
 
   loadPreset(3, 3);
 }
@@ -438,6 +581,8 @@ function init() {
 function loadPreset(rows, cols=rows) {
   currentRows = rows;
   currentCols = cols;
+  rowReadCounts = Array(currentRows).fill(0);
+  colReadCounts = Array(currentCols).fill(0);
   updateSizeDisplay();
 
   const p = presetFor(rows, cols);
@@ -448,12 +593,67 @@ function loadPreset(rows, cols=rows) {
 }
 
 function updateSizeDisplay() {
+  ensureReadCounts();
   document.getElementById("rowCount").textContent = currentRows;
   document.getElementById("colCount").textContent = currentCols;
   document.getElementById("rowMinus").disabled = currentRows <= 2;
   document.getElementById("rowPlus").disabled = currentRows >= 10;
   document.getElementById("colMinus").disabled = currentCols <= 2;
   document.getElementById("colPlus").disabled = currentCols >= 10;
+}
+
+function ensureReadCounts() {
+  while (rowReadCounts.length < currentRows) rowReadCounts.push(0);
+  while (colReadCounts.length < currentCols) colReadCounts.push(0);
+  rowReadCounts = rowReadCounts.slice(0, currentRows);
+  colReadCounts = colReadCounts.slice(0, currentCols);
+}
+
+function readControlsHtml(kind, index, count) {
+  return `<div class="readControls" title="Observed uses">
+    <button class="readBtn" type="button" data-read-minus="${kind},${index}">−</button>
+    <input class="readInput" type="number" min="0" step="1" inputmode="numeric" data-read-input="${kind},${index}" value="${count}">
+    <button class="readBtn" type="button" data-read-plus="${kind},${index}">+</button>
+  </div>`;
+}
+
+function setReadCount(kind, idx, value) {
+  const arr = kind === "row" ? rowReadCounts : colReadCounts;
+  const clean = Math.max(0, Math.floor(Number(value) || 0));
+  arr[idx] = clean;
+  document.querySelectorAll(`[data-read-input="${kind},${idx}"]`).forEach(input => {
+    input.value = clean;
+  });
+}
+
+function attachReadControls() {
+  document.querySelectorAll("[data-read-plus], [data-read-minus]").forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = btn.dataset.readPlus || btn.dataset.readMinus;
+      const [kind, idxText] = key.split(",");
+      const idx = Number(idxText);
+      const delta = btn.dataset.readPlus ? 1 : -1;
+      const arr = kind === "row" ? rowReadCounts : colReadCounts;
+      setReadCount(kind, idx, (arr[idx] || 0) + delta);
+      solve();
+    };
+  });
+
+  document.querySelectorAll("[data-read-input]").forEach(input => {
+    input.onchange = () => {
+      const [kind, idxText] = input.dataset.readInput.split(",");
+      setReadCount(kind, Number(idxText), input.value);
+      solve();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        input.blur();
+      }
+    };
+  });
 }
 
 function namesFromBox(id, count, fallbackPrefix) {
@@ -521,12 +721,13 @@ function rebuildFromNameBoxes() {
 function buildMatrix(rowNames, colNames, A, B=null) {
   const rows = currentRows;
   const cols = currentCols;
+  ensureReadCounts();
   let html = '<table class="matrix"><tr><th class="corner"></th>';
-  for (let j=0;j<cols;j++) html += `<th><input data-colname="${j}" value="${escapeHtml(colNames[j])}"></th>`;
+  for (let j=0;j<cols;j++) html += `<th><div class="moveReadBox"><input data-colname="${j}" value="${escapeHtml(colNames[j])}">${readControlsHtml("col", j, colReadCounts[j] || 0)}</div></th>`;
   html += "</tr>";
 
   for (let i=0;i<rows;i++) {
-    html += `<tr><td class="nameCell"><input data-rowname="${i}" value="${escapeHtml(rowNames[i])}"></td>`;
+    html += `<tr><td class="nameCell"><div class="moveReadBox"><input data-rowname="${i}" value="${escapeHtml(rowNames[i])}">${readControlsHtml("row", i, rowReadCounts[i] || 0)}</div></td>`;
     for (let j=0;j<cols;j++) {
       const a = (A[i] && Number.isFinite(+A[i][j])) ? +A[i][j] : 0;
       const b = (B && B[i] && Number.isFinite(+B[i][j])) ? +B[i][j] : -a;
@@ -544,6 +745,8 @@ function buildMatrix(rowNames, colNames, A, B=null) {
     inp.addEventListener("change", syncNameBoxes);
     inp.addEventListener("input", syncNameBoxes);
   });
+
+  attachReadControls();
 
   document.querySelectorAll("[data-a]").forEach(inp => {
     inp.addEventListener("change", () => {
@@ -571,6 +774,8 @@ function readMatrices() {
   const cols = currentCols;
   const A = Array.from({length:rows},()=>Array(cols).fill(0));
   const B = Array.from({length:rows},()=>Array(cols).fill(0));
+  attachReadControls();
+
   document.querySelectorAll("[data-a]").forEach(inp => {
     const [i,j] = inp.dataset.a.split(",").map(Number);
     if (i<rows && j<cols) {
@@ -803,7 +1008,9 @@ function exportSituation() {
     columnMoves: colNames,
     rowPayoffs: A,
     columnPayoffs: B,
-    bimatrixNash: useBimatrixMode
+    bimatrixNash: useBimatrixMode,
+    bayesianRead: useBayesianMode,
+    adaptationSharpness: adaptationSharpness
   };
 
   document.getElementById("saveLoadText").value = JSON.stringify(data, null, 2);
@@ -850,11 +1057,17 @@ function importSituation() {
 
   currentRows = importedRows;
   currentCols = importedCols;
+  rowReadCounts = Array(currentRows).fill(0);
+  colReadCounts = Array(currentCols).fill(0);
   updateSizeDisplay();
 
   document.getElementById("rowNames").value = rowLabels.join(",");
   document.getElementById("colNames").value = colLabels.join(",");
   useBimatrixMode = !!data.bimatrixNash;
+  useBayesianMode = !!data.bayesianRead;
+  if (data.adaptationSharpness && ADAPTATION_TEMPERATURES[data.adaptationSharpness]) {
+    adaptationSharpness = data.adaptationSharpness;
+  }
   selectedEquilibriumIndex = 0;
 
   buildMatrix(rowLabels, colLabels, cleanMatrix(data.rowPayoffs), cleanMatrix(data.columnPayoffs));
@@ -910,6 +1123,113 @@ function practicalMixHtml(names, probs, colorVar) {
       </div>
     `).join("")}
   </div>`;
+}
+
+function bayesianEstimate(base, counts) {
+  const total = counts.reduce((a,b) => a + Math.max(0, b || 0), 0);
+  const denom = BAYES_PRIOR_STRENGTH + total;
+  if (denom <= 0) return normalize(base);
+  return normalize(base.map((p, i) => (p * BAYES_PRIOR_STRENGTH + Math.max(0, counts[i] || 0)) / denom));
+}
+
+function addArrays(a, b) {
+  const len = Math.max(a.length, b.length);
+  return Array.from({length:len}, (_,i) => Math.max(0, a[i] || 0) + Math.max(0, b[i] || 0));
+}
+
+function softmaxPreference(values, wantMax=true, temperature=currentAdaptationTemperature()) {
+  if (!values.length) return [];
+  const target = wantMax ? Math.max(...values) : Math.min(...values);
+  const raw = values.map(v => {
+    const diff = wantMax ? (target - v) : (v - target);
+    return Math.exp(-diff / temperature);
+  });
+  const total = raw.reduce((a,b) => a + b, 0);
+  if (!total || !Number.isFinite(total)) return Array(values.length).fill(1 / values.length);
+  return raw.map(v => v / total);
+}
+
+function predictedColumnAdaptationCounts(A, rowCounts) {
+  const cols = A[0].length;
+  const out = Array(cols).fill(0);
+
+  for (let i=0; i<A.length; i++) {
+    const count = Math.max(0, rowCounts[i] || 0);
+    if (!count) continue;
+
+    // If row shows move i, column adapts toward replies that lower row's red payoff.
+    // We use soft weights, so near-equivalent counters both receive adaptation weight.
+    const weights = softmaxPreference(A[i], false);
+    for (let j=0; j<cols; j++) out[j] += count * weights[j];
+  }
+
+  return out;
+}
+
+function predictedRowAdaptationCounts(A, colCounts) {
+  const rows = A.length;
+  const cols = A[0].length;
+  const out = Array(rows).fill(0);
+
+  for (let j=0; j<cols; j++) {
+    const count = Math.max(0, colCounts[j] || 0);
+    if (!count) continue;
+
+    // If column shows move j, row adapts toward attacks that raise row's red payoff.
+    // We use soft weights, so near-equivalent punishes both receive adaptation weight.
+    const values = Array.from({length:rows}, (_,i) => A[i][j]);
+    const weights = softmaxPreference(values, true);
+    for (let i=0; i<rows; i++) out[i] += count * weights[i];
+  }
+
+  return out;
+}
+
+function pureBestResponses(values, maximize=true, fallback=null) {
+  const target = maximize ? Math.max(...values) : Math.min(...values);
+  const winners = values.map((v,i) => Math.abs(v - target) < 1e-7 ? i : -1).filter(i => i >= 0);
+  const out = Array(values.length).fill(0);
+
+  // If multiple moves tie as best responses, keep the Nash/prior mix among those
+  // tied moves instead of displaying an arbitrary uniform 33/33/33 split.
+  // This makes Bayesian mode start from the normal Nash result when no reads
+  // have been entered, and only move away from it when evidence justifies it.
+  if (fallback && winners.some(i => (fallback[i] || 0) > 1e-8)) {
+    winners.forEach(i => out[i] = Math.max(0, fallback[i] || 0));
+    return normalize(out);
+  }
+
+  winners.forEach(i => out[i] = 1 / winners.length);
+  return out;
+}
+
+function rowMoveEVs(A, y) {
+  return A.map((_, i) => dotPayoffRow(A, i, y));
+}
+
+function colMoveEVs(B, x) {
+  return Array.from({length:B[0].length}, (_, j) => dotPayoffCol(B, x, j));
+}
+
+function fmtCount(x) {
+  const clean = Math.max(0, x || 0);
+  return Math.abs(clean - Math.round(clean)) < 1e-9 ? String(Math.round(clean)) : clean.toFixed(1);
+}
+
+function readSummaryHtml(title, names, base, estimate, counts, countLabel="seen") {
+  const total = counts.reduce((a,b) => a + Math.max(0, b || 0), 0);
+  return `<div class="readSummary"><b>${title}</b><br>
+    ${names.map((name, i) => `${escapeHtml(name)}: ${Math.round(100 * estimate[i])}% (${fmtCount(counts[i] || 0)} ${countLabel}, Nash ${Math.round(100 * base[i])}%)`).join(" · ")}
+    <br>Total ${countLabel}: ${fmtCount(total)}</div>`;
+}
+
+function adaptationSharpnessName() {
+  return ({
+    conservative: "Conservative",
+    normal: "Normal",
+    strong: "Strong",
+    perfect: "Perfect"
+  })[adaptationSharpness] || "Normal";
 }
 
 function solve() {
@@ -982,20 +1302,57 @@ function solve() {
         The opponent is treated as trying to minimize your red payoff. Blue values are only used for the displayed opponent payoff.</p>`;
     }
 
-    document.getElementById("rowResult").innerHTML = stratTable(rowNames,x) +
-      `<div class="valueBox" style="color:var(--red)">Expected damage<br>${fmtEV(val)}</div>` +
+    const nashX = x.slice();
+    const nashY = y.slice();
+    let summaryHtml = bimatrix ? extraText : "";
+
+    if (useBayesianMode) {
+      const predictedRowCounts = predictedRowAdaptationCounts(A, colReadCounts);
+      const predictedColCounts = predictedColumnAdaptationCounts(A, rowReadCounts);
+      const effectiveRowCounts = addArrays(rowReadCounts, predictedRowCounts);
+      const effectiveColCounts = addArrays(colReadCounts, predictedColCounts);
+
+      const estimatedRow = bayesianEstimate(nashX, effectiveRowCounts);
+      const estimatedCol = bayesianEstimate(nashY, effectiveColCounts);
+
+      // Bayesian read mode displays posterior/updated frequencies:
+      // (Nash frequency * prior strength + observed/adaptation count) / (prior strength + total count).
+      // Direct reads update the player whose move was counted. The other player also gets a soft
+      // predicted adaptation count toward replies weighted by payoff quality.
+      x = estimatedRow;
+      y = estimatedCol;
+      val = expected(A, x, y);
+      oppVal = expected(B, x, y);
+
+      document.querySelector(".rowh").textContent = "Bayesian Read: Row Player";
+      document.querySelector(".colh").textContent = "Bayesian Read: Column Player";
+      summaryHtml += `
+        <p class="small explainText"><b>Bayesian read mode is on.</b> Percent values show the Bayesian estimate first, with the original Nash percent in brackets. Adaptation sharpness: ${escapeHtml(adaptationSharpnessName())}.</p>`;
+    } else {
+      document.querySelector(".rowh").textContent = "Optimal Strategy: Row Player";
+      document.querySelector(".colh").textContent = "Optimal Strategy: Column Player";
+    }
+
+    document.getElementById("rowResult").innerHTML = stratTable(rowNames, x, useBayesianMode ? nashX : null) +
+      `<div class="valueBox" style="color:var(--red)">${useBayesianMode ? "Expected damage with reads" : "Expected damage"}<br>${fmtEV(val)}</div>` +
       practicalMixHtml(rowNames, x, "var(--red)");
-    document.getElementById("colResult").innerHTML = stratTable(colNames,y) +
-      `<div class="valueBox" style="color:var(--blue)">Opponent payoff<br>${fmtEV(oppVal)}</div>` +
+    document.getElementById("colResult").innerHTML = stratTable(colNames, y, useBayesianMode ? nashY : null) +
+      `<div class="valueBox" style="color:var(--blue)">${useBayesianMode ? "Opponent payoff with reads" : "Opponent payoff"}<br>${fmtEV(oppVal)}</div>` +
       practicalMixHtml(colNames, y, "var(--blue)");
 
-    document.getElementById("summary").innerHTML =
-      `
-${bimatrix ? extraText : ""}`;
+    document.getElementById("summary").innerHTML = summaryHtml;
 
 const bm=document.getElementById("bimatrixMode");
     bm.checked=bimatrix;
     bm.onchange=(e)=>{useBimatrixMode=e.target.checked; selectedEquilibriumIndex = 0; solve();};
+
+    const bayes=document.getElementById("bayesianMode");
+    bayes.checked=useBayesianMode;
+    document.body.classList.toggle("bayesActive", useBayesianMode);
+    document.getElementById("bayesDetails").style.display = useBayesianMode ? "block" : "none";
+    document.querySelectorAll('input[name="adaptationSharpness"]').forEach(radio => {
+      radio.checked = radio.value === adaptationSharpness;
+    });
 
     document.querySelectorAll('input[name="eqChoice"]').forEach(radio => {
       radio.onchange = (e) => {
@@ -1009,10 +1366,12 @@ const bm=document.getElementById("bimatrixMode");
   }
 }
 
-function stratTable(names, probs) {
+function stratTable(names, probs, baseProbs=null) {
   let html = '<table class="mini"><tr><th>Move</th><th>Frequency</th><th>Percent</th></tr>';
   for (let i=0;i<names.length;i++) {
-    html += `<tr><td>${escapeHtml(names[i])}</td><td>${fmtFreq(probs[i])}</td><td>${Math.round(100*probs[i])}%</td></tr>`;
+    const percent = `${Math.round(100*probs[i])}%`;
+    const basePercent = baseProbs ? ` (${Math.round(100*baseProbs[i])}%)` : "";
+    html += `<tr><td>${escapeHtml(names[i])}</td><td>${fmtFreq(probs[i])}</td><td>${percent}${basePercent}</td></tr>`;
   }
   return html + "</table>";
 }
