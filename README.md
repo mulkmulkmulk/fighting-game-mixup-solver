@@ -2,6 +2,9 @@
 
 Browser-based game theory solver for fighting game situations.
 
+Live version:
+https://mulkmulkmulk.github.io/fighting-game-mixup-solver/
+
 Features
 
 - Zero-sum minimax
@@ -13,3 +16,4 @@ Features
 
 Inspired by Magician's video:
 https://www.youtube.com/watch?v=rSSfrONyS50
+
