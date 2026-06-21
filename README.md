@@ -11,6 +11,10 @@ Features
 - Bimatrix Nash equilibria
 - Multiple equilibria selector
 - Save / Load situations
+- Bayesian read / exploit mode
+- Opponent adaptation prediction
+- Adaptation sharpness presets
+- Practical mix approximation
 - Up to 10×10 matrices
 - Supports rectangular matrices
 
